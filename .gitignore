@@ -1,0 +1,5 @@
+# Screenshots and recordings live on the orphan `assets` branch, not on main.
+*.png
+*.gif
+# Betamax failure bundles.
+/target/

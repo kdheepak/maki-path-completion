@@ -1,0 +1,6 @@
+[tools]
+lua = "latest"
+
+[tasks.test]
+description = "Run the path completion tests"
+run = "lua tests/path_completion.lua"

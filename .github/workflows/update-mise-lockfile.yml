@@ -1,0 +1,62 @@
+name: Update mise lockfile
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-mise-lockfile
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install mise
+        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          install: false
+          cache: false
+          github_token: ${{ github.token }}
+
+      - name: Update lockfile
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mise lock --upgrade --bump
+
+      # A pull request opened with GITHUB_TOKEN does not trigger the test
+      # workflow, so the updated tools are installed and tested here instead.
+      - name: Test with the updated tools
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mise install --locked
+          mise run test
+
+      - name: Open dependency pull request
+        uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8.1.3
+        with:
+          token: ${{ github.token }}
+          base: main
+          branch: automation/mise-lockfile
+          delete-branch: true
+          commit-message: "chore(deps): update mise lockfile"
+          title: "chore(deps): update mise lockfile"
+          body: |
+            Weekly update of the mise lockfile.
+
+            Generated with `mise lock --upgrade --bump`, which re-resolves the
+            `latest` requests in `.config/mise.toml`. The updated tools were installed
+            and the tests passed before this pull request was opened.
+          add-paths: .config/mise.lock

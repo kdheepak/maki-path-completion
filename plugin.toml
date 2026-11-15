@@ -1,0 +1,14 @@
+min_maki_version = "0.7.2"
+
+[permissions]
+# Lists directories to complete paths and accepts the builtin file completion.
+fs_read = true
+# Reads the session's working directory, which relative paths resolve against,
+# and the input draft the path is completed in.
+session_read = true
+# Writes the chosen path into the chat input. Changing the input's text needs
+# agent and session_write as well, because Enter then sends it, and so does
+# the builtin completion's accept action.
+input = true
+agent = true
+session_write = true
