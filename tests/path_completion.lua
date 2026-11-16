@@ -12,7 +12,8 @@ for i = 1, 12 do
   table.insert(DIRS[ROOT .. "/many/"], { string.format("f%02d", i), "file" })
 end
 
-local tab, autocmds, edits, notices, wins, fell_back, reads
+local tab, autocmds, edits, notices, wins, fell_back, reads, current
+local actions = {}
 local function reset()
   edits, notices, wins, fell_back, reads = {}, {}, {}, false, 0
 end
@@ -39,6 +40,10 @@ maki = {
     end,
   },
   api = {
+    register_action = function(name, fn, opts)
+      actions[name] = { run = fn, capability = opts and opts.capability }
+      return "maki-path-completion." .. name
+    end,
     create_autocmd = function(event, spec)
       autocmds = autocmds or {}
       autocmds[event] = spec.callback
@@ -46,6 +51,7 @@ maki = {
   },
   ui = {
     action = function() return false end,
+    input = function() return current end,
     input_edit = function(edit)
       edits[#edits + 1] = edit
       return { version = edit.version + 1, cursor = edit.start + #edit.text }
@@ -85,7 +91,10 @@ maki = {
 package.loaded["maki.list_picker"] = {
   range_spans = function(label, _, base) return { { label, base } } end,
 }
-local M = dofile(arg[1] or "lua/maki_path_completion.lua")
+local MODULE = arg[1] or "lua/maki_path_completion.lua"
+local M = dofile(MODULE)
+M.setup()
+M.setup()
 
 local function fallback()
   fell_back = true
@@ -272,4 +281,36 @@ test("closes when another session takes focus", function()
   other.session_id = "s2"
   autocmds.InputChanged({ data = other })
   assert(not win.open)
+end)
+
+test("registers a complete action that needs what inserting a path takes", function()
+  local action = actions.complete
+  assert(action)
+  table.sort(action.capability)
+  assert(table.concat(action.capability, ",") == "agent,fs_read,input,session_read,session_write")
+  current = input("open src/ma")
+  assert(action.run() == true)
+  assert(edits[1].text == "src/main.rs ")
+  current = input("see ")
+  assert(action.run() == false)
+  current = nil
+  assert(action.run() == false)
+  current = input("cat zzz")
+  assert(action.run() == true and notices[1].msg == NO_MATCHES)
+end)
+
+test("binds no key with key = false, and another key when asked", function()
+  local bound = {}
+  local set = maki.keymap.set
+  maki.keymap.set = function(mode, lhs, fn, opts)
+    if not opts.buffer then
+      bound[#bound + 1] = lhs
+    end
+    return set(mode, lhs, fn, opts)
+  end
+  dofile(MODULE).setup({ key = false })
+  assert(#bound == 0)
+  dofile(MODULE).setup({ key = "<M-p>" })
+  assert(#bound == 1 and bound[1] == "<M-p>")
+  maki.keymap.set = set
 end)

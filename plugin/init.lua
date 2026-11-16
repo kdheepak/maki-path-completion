@@ -1,1 +1,1 @@
-require("maki_path_completion")
+require("maki_path_completion").setup()

@@ -1,8 +1,7 @@
 -- <Tab> completes the path at the cursor from a popup on the input caret that
 -- narrows as you type. Words opening with `@`, `$` or `!` are left to their
 -- own completers, and <Tab> falls through when there is no word to complete.
--- A word with no matching path gets a notice instead, since <Tab>'s default
--- switches between plan and build, which a typo should not do.
+-- `setup` binds the key; the `complete` action lets `init.lua` bind its own.
 local ListPicker = require("maki.list_picker")
 
 local FOOTER = { { "Tab/Enter", "insert" }, { "↑/↓", "move" }, { "Esc", "close" } }
@@ -305,14 +304,14 @@ local function narrow(st)
   render()
 end
 
-maki.keymap.set("i", "<Tab>", function(ev)
-  if maki.ui.action("completion.accept") then
-    return
-  end
-  local st = ev.input
+-- Completes the word at {st}'s cursor. Returns false when there is no word
+-- to complete, so the key can go on and do what it does otherwise. A word
+-- with no matching path still counts as handled, because <Tab>'s default
+-- switches between plan and build, which a typo should not do.
+local function complete(st)
   local start, token, quote = word_at(st)
   if not start then
-    return ev.fallback()
+    return false
   end
   local root = session_root()
   local items, more, listing = matches(token, root)
@@ -323,25 +322,56 @@ maki.keymap.set("i", "<Tab>", function(ev)
   else
     open(st, start, quote, items, more, root, listing)
   end
-end, { desc = "Complete file path or accept completion" })
-
-maki.api.create_autocmd("InputChanged", {
-  callback = function(ev)
-    narrow(ev.data)
-  end,
-})
-
-for _, event in ipairs({ "SessionReset", "TaskFocusChanged" }) do
-  maki.api.create_autocmd(event, { callback = close })
+  return true
 end
 
-maki.api.create_autocmd("SessionStatusChanged", {
-  callback = function(ev)
-    if ev.data.focused and ev.data.status == "needs_input" then
-      close()
-    end
-  end,
-})
+-- What a caller of the action must hold: completing reads directories and the
+-- input, and writes a path into it that Enter then sends.
+local CAPABILITY = { "fs_read", "input", "session_read", "agent", "session_write" }
 
--- Pure helpers, exposed for tests.
-return { token_before = token_before, encode = encode }
+local M = { token_before = token_before, encode = encode }
+local configured = false
+
+-- Registers the `complete` action and binds {opts.key}, `"<Tab>"` by default,
+-- to it. With `key = false`, binding a key is left to the user's `init.lua`.
+function M.setup(opts)
+  if configured then
+    return
+  end
+  configured = true
+  opts = opts or {}
+
+  maki.api.register_action("complete", function()
+    return complete(maki.ui.input())
+  end, { capability = CAPABILITY })
+
+  local key = opts.key == nil and "<Tab>" or opts.key
+  if key then
+    maki.keymap.set("i", key, function(ev)
+      if maki.ui.action("completion.accept") or complete(ev.input) then
+        return
+      end
+      ev.fallback()
+    end, { desc = "Complete file path or accept completion" })
+  end
+
+  maki.api.create_autocmd("InputChanged", {
+    callback = function(ev)
+      narrow(ev.data)
+    end,
+  })
+
+  for _, event in ipairs({ "SessionReset", "TaskFocusChanged" }) do
+    maki.api.create_autocmd(event, { callback = close })
+  end
+
+  maki.api.create_autocmd("SessionStatusChanged", {
+    callback = function(ev)
+      if ev.data.focused and ev.data.status == "needs_input" then
+        close()
+      end
+    end,
+  })
+end
+
+return M

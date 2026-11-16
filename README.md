@@ -37,3 +37,24 @@ On the next start maki asks to install it, and to grant the permissions listed i
 - Relative paths resolve against the session's working directory.
 - Words starting with `@`, `$` or `!` are left to maki's own completers.
 - With no word to complete, <kbd>Tab</kbd> still switches between plan and build.
+
+## Custom keys
+
+To bind the key yourself, load the package with `key = false` and call the `complete` action:
+
+```lua
+maki.pack.add({ "https://github.com/kdheepak/maki-path-completion" }, {
+  load = function()
+    require("maki_path_completion").setup({ key = false })
+  end,
+})
+
+maki.keymap.set("i", "<Tab>", function(ev)
+  if maki.ui.action("completion.accept") then return end
+  if maki.ui.action("maki-path-completion.complete") then return end
+  ev.fallback()
+end)
+```
+
+Or pass another key, like `setup({ key = "<M-p>" })`. Calling the action needs `fs_read`, `input`,
+`session_read`, `agent` and `session_write` in `~/.config/maki/plugin.toml`.
